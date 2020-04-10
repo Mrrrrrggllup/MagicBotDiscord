@@ -1,5 +1,8 @@
 const discord = require('discord.js');
 const fetch = require("node-fetch");
+const prismmedia = require('prism-media');
+const opusscript = require('opusscript');
+const ffmpeg_static = require('ffmpeg-static');
 const bot = new discord.Client();
 const properties = require('./bot.json');
 bot.login(properties.botInfo.token);
@@ -10,23 +13,26 @@ let somebodysaymagicbot = false;
 const possibleAnswers = ['horoscope'];
 let question= '';
 const mp3Horoscope = './NounoursdenoelHoroscope.mp3';
-let currentGuild = new Map();
+let isBusy = false;
 
 
 bot.on('message', function (message) {
 
     currentAnswer(message.content.toLowerCase(), possibleAnswers);
     somebodysaymagicbot = message.content.toLowerCase().indexOf(botName) !== -1;
-    if (somebodysaymagicbot) {
+
+    if (somebodysaymagicbot && !isBusy) {
+        isBusy = true;
         switch (question) {
             case 'horoscope' :
-                getHoroscope(actualAuthor, message);
+                getHoroscope(message);
                 break;
+            default : isBusy = false;
         }
     }
 });
 
-function getHoroscope(actAuthor, message) {
+function getHoroscope(message) {
 
     const author = message.author.id;
     message.reply('Bien sur ! Quel est votre signe astrologique ? (tapez !!{monSigneEnAnglais})');
@@ -37,15 +43,15 @@ function getHoroscope(actAuthor, message) {
             fetch(url + sign)
                 .then(rep => rep.json())
                 .then(json => {
-                    let currentGuild = rep.channel.guild;
-                    let chans;
-                    let test = currentGuild.channels.cache.each(c => console.log(c.type)).filter(c => c.type === 'voice');
-                    let vocalChan = test.last();
-                    playAudioMessage(vocalChan);
+                    let vocalChan = rep.member.voice.channel;
+                    if (vocalChan) {
+                        playAudioMessage(vocalChan);
+                    }
                     rep.reply('Voila ton horoscope du jour : ' + json.horoscope);
                 });
         }
-        actualAuthor = 0;
+        isBusy = false;
+        return null;
     })
 }
 
@@ -59,11 +65,18 @@ function currentAnswer (mess , possibleAns) {
 
 async function playAudioMessage(channel) {
     //TODO : refaire cette fonction
-    await channel.join().then(async (connection) => {
-        let dispatcher = await connection.playFile(mp3Horoscope);
-        await dispatcher.on('end', function () {
-            channel.leave()
-        })
-    })
+    channel.join()
+        .then(connection => {
+            console.log('i am connected on vocal')
+            const dispatcher = connection.play(mp3Horoscope)
+            dispatcher.on('end', () => {
+                channel.leave();
+                console.log('I am leaving right now');
+            })
+                .on('error', () => {
+                    console.error(error)
+                })
+            })
+        .catch(console.error);
 }
 
